@@ -31,7 +31,7 @@ Quick setup
 2. Open appsettings.json in any text editor and add your webhooks:
 
      "Webhooks": {
-       "default": [
+       "voice": [
          { "Url": "https://discord.com/api/webhooks/<id>/<token>",
            "OutboundIp": "203.0.113.10" },
          { "Url": "https://discord.com/api/webhooks/<id>/<token>",
@@ -57,8 +57,8 @@ Quick setup
 
 4. Configure the ToxVoice Rust plugin to point at the relay:
 
-     Webhook URL: http://127.0.0.1:8787/webhook/default
-                  http://127.0.0.1:8787/webhook/alerts
+     Webhook URL: http://127.0.0.1:8787/relay/voice
+                  http://127.0.0.1:8787/relay/alerts
 
 
 How rotation + failover works
@@ -92,7 +92,7 @@ BindAddress        Interface to bind on. Keep "127.0.0.1" for
 
 Webhooks           Map of name -> array of (Url, OutboundIp) targets.
                    The plugin uses the name in the relay URL path:
-                     POST http://127.0.0.1:8787/webhook/<name>
+                     POST http://127.0.0.1:8787/relay/<name>
 
 RequestTimeoutSeconds  Per-request timeout to Discord (default 30).
 

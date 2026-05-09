@@ -61,7 +61,7 @@ var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-app.MapPost("/webhook/{name}", async (
+app.MapPost("/relay/{name}", async (
     string name,
     HttpContext httpContext,
     DiscordForwarder forwarder,

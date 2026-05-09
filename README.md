@@ -41,7 +41,7 @@ Grab the latest release for your platform from the
 2. Open `appsettings.json` and add your webhooks:
    ```json
    "Webhooks": {
-     "default": [
+     "voice": [
        { "Url": "https://discord.com/api/webhooks/<id1>/<token1>", "OutboundIp": "203.0.113.10" },
        { "Url": "https://discord.com/api/webhooks/<id2>/<token2>", "OutboundIp": "203.0.113.11" },
        { "Url": "https://discord.com/api/webhooks/<id3>/<token3>", "OutboundIp": "203.0.113.12" }
@@ -58,7 +58,7 @@ Grab the latest release for your platform from the
    - Linux: `./toxvoice-relay`
 4. Point the ToxVoice plugin at the relay:
    ```
-   Webhook URL: http://127.0.0.1:8787/webhook/default
+   Webhook URL: http://127.0.0.1:8787/relay/voice
    ```
 
 See `README.txt` shipped with the binary for the full reference.
