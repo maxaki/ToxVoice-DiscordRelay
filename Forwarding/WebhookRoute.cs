@@ -1,29 +1,27 @@
-using ToxVoice.DiscordRelay.Configuration;
+using System.Threading.Channels;
 
 namespace ToxVoice.DiscordRelay.Forwarding;
 
 public sealed class WebhookRoute
 {
-    private long _counter = -1;
+    private readonly Channel<RelayedMessage> _channel;
 
-    public WebhookRoute(string name, IReadOnlyList<WebhookTarget> targets)
+    public WebhookRoute(string name, IReadOnlyList<RuntimeTarget> targets)
     {
         Name = name;
         Targets = targets;
+        _channel = Channel.CreateUnbounded<RelayedMessage>(new UnboundedChannelOptions
+        {
+            SingleReader = false,
+            SingleWriter = false
+        });
     }
 
     public string Name { get; }
-    public IReadOnlyList<WebhookTarget> Targets { get; }
+    public IReadOnlyList<RuntimeTarget> Targets { get; }
+    public ChannelReader<RelayedMessage> Reader => _channel.Reader;
 
-    public int NextStartIndex()
-    {
-        var raw = Interlocked.Increment(ref _counter) & long.MaxValue;
-        return (int)(raw % Targets.Count);
-    }
+    public bool TryEnqueue(RelayedMessage message) => _channel.Writer.TryWrite(message);
 
-    public WebhookTarget GetAt(int index)
-    {
-        var i = ((index % Targets.Count) + Targets.Count) % Targets.Count;
-        return Targets[i];
-    }
+    public void Complete() => _channel.Writer.TryComplete();
 }

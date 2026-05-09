@@ -39,7 +39,7 @@ builder.Services
 
 builder.Services.AddSingleton<OutboundHttpClientPool>();
 builder.Services.AddSingleton<WebhookRouteRegistry>();
-builder.Services.AddSingleton<DiscordForwarder>();
+builder.Services.AddHostedService<WebhookWorkerHost>();
 
 var relayOptions = builder.Configuration.GetSection(RelayOptions.SectionName).Get<RelayOptions>() ?? new RelayOptions();
 
@@ -64,7 +64,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapPost("/relay/{name}", async (
     string name,
     HttpContext httpContext,
-    DiscordForwarder forwarder,
     WebhookRouteRegistry registry,
     ILogger<Program> logger,
     CancellationToken cancellationToken) =>
@@ -77,20 +76,21 @@ app.MapPost("/relay/{name}", async (
 
     using var bodyStream = new MemoryStream();
     await httpContext.Request.Body.CopyToAsync(bodyStream, cancellationToken).ConfigureAwait(false);
-    var body = bodyStream.ToArray();
-    var contentType = httpContext.Request.ContentType ?? "application/octet-stream";
 
-    var result = await forwarder.ForwardAsync(route, body, contentType, cancellationToken).ConfigureAwait(false);
+    var message = new RelayedMessage
+    {
+        Body = bodyStream.ToArray(),
+        ContentType = httpContext.Request.ContentType ?? "application/octet-stream",
+        EnqueuedAt = DateTimeOffset.UtcNow
+    };
 
-    httpContext.Response.StatusCode = (int)result.StatusCode;
-    httpContext.Response.ContentType = result.ContentType;
-    httpContext.Response.Headers["X-Relay-Outbound-Ip"] = result.OutboundIp;
-    httpContext.Response.Headers["X-Relay-Attempts"] = result.Attempts.ToString();
+    if (!route.TryEnqueue(message))
+    {
+        logger.LogError("Failed to enqueue message for webhook '{Name}' — channel writer rejected.", name);
+        return Results.Problem("Failed to enqueue message.", statusCode: 503);
+    }
 
-    if (result.Body.Length > 0)
-        await httpContext.Response.Body.WriteAsync(result.Body, cancellationToken).ConfigureAwait(false);
-
-    return Results.Empty;
+    return Results.Accepted();
 });
 
 using (var scope = app.Services.CreateScope())

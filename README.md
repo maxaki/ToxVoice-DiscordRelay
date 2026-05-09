@@ -1,31 +1,68 @@
 # ToxVoice Discord Relay
 
 A small local service that forwards Discord webhook posts from the
-[ToxVoice](https://toxvoice.com) Rust plugin to Discord. It runs alongside
-your Rust dedicated server and lets you spread traffic across multiple
-Discord webhooks, each bound to a specific outbound IP, to **bypass per-webhook
-rate limits** and **isolate Cloudflare ban risk**.
+[ToxVoice](https://toxvoice.com) Rust plugin to Discord. It accepts
+messages on a localhost endpoint, queues them, and delivers them via
+one or more configured Discord webhooks — each optionally bound to a
+specific outbound IP.
 
 ## Why
 
-Discord rate-limits are **per webhook** (`webhook_id + token`) — typically
-~5 requests / 2 seconds. Adding more outbound IPs alone does **not** help,
-because the bucket is on the webhook side. You need multiple webhooks to
-get parallel rate-limit budgets.
+**Discord rate-limits are per webhook** (`webhook_id + token`),
+typically ~5 requests / 2 seconds. Adding more outbound IPs alone does
+**not** help — the rate-limit bucket lives on the webhook side. You
+need multiple webhooks to get parallel rate-limit budgets.
 
-Cloudflare's invalid-request limit (10K per 10 minutes) is **per source IP**.
-If a specific IP is banned, only the webhook bound to it goes offline; the
-others keep working. This is the real win from binding `webhook ↔ IP`.
+**Cloudflare's invalid-request limit (10K per 10 min) is per source
+IP.** Binding each webhook to its own outbound IP isolates ban risk:
+a banned IP only takes its own webhook offline.
+
+The relay gives you both — multiple webhooks fed from a shared queue,
+each handled by a dedicated worker bound to its own outbound IP.
+
+## How it works
+
+```
+[POST /relay/<route>]  →  202 Accepted (immediately)
+       │
+       ▼
+   [Channel<RelayedMessage>]   one queue per route name
+       │
+       │   workers compete for messages
+       │
+   ┌───┼─────────────────────┬─────────────────────┐
+   ▼                         ▼                     ▼
+[Worker: hookA, IP1]   [Worker: hookB, IP2]   [Worker: hookC, IP3]
+ read msg               read msg               read msg
+ try send to Discord    try send to Discord    try send to Discord
+ ↓ on 429: sleep,       ↓ on 429: sleep,       ↓ on 429: sleep,
+   retry SAME msg         retry SAME msg         retry SAME msg
+ ↓ on 5xx: backoff,     ↓ on 5xx: backoff,     ↓ on 5xx: backoff,
+   retry SAME msg         retry SAME msg         retry SAME msg
+ ↓ on 404: worker dies, others continue
+ ↓ on other 4xx: log + drop, take next msg
+```
+
+A rate-limited worker naturally stops pulling from the queue while it
+sleeps — the other workers keep delivering. Round-robin emerges from
+worker availability, not from explicit rotation.
 
 ## Features
 
-- **Round-robin across multiple Discord webhooks** per route name, each
-  optionally bound to a specific local outbound IP.
-- **Automatic failover** on network errors, 5xx, and 429 (rate-limited):
-  the relay rotates to the next `(webhook, IP)` target and retries.
-- **Single self-contained binary**, no .NET runtime required at the endpoint.
-- **Cross-platform**: Windows + Linux from the same source.
-- **Logs every forward to disk** (rolling daily, 7-day retention).
+- **One worker per `(webhook, IP)` target**, all consuming a shared
+  per-route channel.
+- **No dropped messages on rate-limit.** A 429 response causes the
+  worker to sleep for the `Retry-After` (or `X-RateLimit-Reset-After`)
+  duration and retry the same message.
+- **Per-target failure modes:**
+  - `2xx` → delivered, take next
+  - `429` → respect rate-limit, retry same
+  - `5xx` / network errors → exponential backoff (1s → 60s cap), retry same
+  - `404` → webhook deleted at Discord; worker stops permanently
+  - other `4xx` → log error, drop message, take next
+- **Single self-contained binary**, no .NET runtime required.
+- **Cross-platform** (Windows + Linux).
+- **Logs every event to disk** (rolling daily, 7-day retention).
 
 ## Download
 
@@ -62,23 +99,6 @@ Grab the latest release for your platform from the
    ```
 
 See `README.txt` shipped with the binary for the full reference.
-
-## How rotation + failover works
-
-For each request the relay receives:
-
-1. A round-robin counter picks a starting target from the named list.
-2. The configured `OutboundIp` is used as the local source IP for the
-   POST to Discord.
-3. If the request fails with a network error, 5xx, or **429 (rate
-   limited)**, the relay immediately rotates to the **next target** and
-   retries.
-4. Other 4xx (400/401/403/404/...) are returned without rotating —
-   those are application-level errors, not transient.
-
-A rate-limited target is automatically skipped to the next
-`(webhook, IP)` pair, giving the affected webhook time to recover its
-bucket before the round-robin returns to it.
 
 ## Building from source
 
