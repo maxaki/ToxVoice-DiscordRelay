@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+publish/
+out/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local config / runtime
+appsettings.Local.json
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
