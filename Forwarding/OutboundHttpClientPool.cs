@@ -1,23 +1,21 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using Microsoft.Extensions.Options;
-using ToxVoice.DiscordRelay.Configuration;
 
 namespace ToxVoice.DiscordRelay.Forwarding;
 
 public sealed class OutboundHttpClientPool : IDisposable
 {
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
+
     private readonly ConcurrentDictionary<string, HttpClient> _clientsByIp = new(StringComparer.OrdinalIgnoreCase);
     private readonly HttpClient _defaultClient;
-    private readonly TimeSpan _timeout;
     private readonly ILogger<OutboundHttpClientPool> _logger;
 
-    public OutboundHttpClientPool(IOptions<RelayOptions> options, ILogger<OutboundHttpClientPool> logger)
+    public OutboundHttpClientPool(ILogger<OutboundHttpClientPool> logger)
     {
         _logger = logger;
-        _timeout = TimeSpan.FromSeconds(Math.Max(1, options.Value.RequestTimeoutSeconds));
-        _defaultClient = new HttpClient { Timeout = _timeout };
+        _defaultClient = new HttpClient { Timeout = RequestTimeout };
     }
 
     public (HttpClient Client, string Label) GetClient(string? outboundIp)
@@ -58,7 +56,7 @@ public sealed class OutboundHttpClientPool : IDisposable
                 }
             }
         };
-        return new HttpClient(handler) { Timeout = _timeout };
+        return new HttpClient(handler) { Timeout = RequestTimeout };
     }
 
     public void Dispose()

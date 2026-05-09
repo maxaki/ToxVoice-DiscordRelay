@@ -96,9 +96,6 @@ Webhooks           Map of name -> array of (OutboundIp, Url) targets.
                    The plugin uses the name in the relay URL path:
                      POST http://127.0.0.1:8787/relay/<name>
 
-RequestTimeoutSeconds  Per-request timeout to Discord (default 30).
-
-
 Health check
 ------------
 
