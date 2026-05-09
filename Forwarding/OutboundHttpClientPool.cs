@@ -22,7 +22,9 @@ public sealed class OutboundHttpClientPool : IDisposable
 
     public (HttpClient Client, string Label) GetClient(string? outboundIp)
     {
-        if (string.IsNullOrWhiteSpace(outboundIp))
+        // Empty/missing or wildcard addresses (0.0.0.0 / ::) = let the OS pick
+        // the source IP via the routing table (no explicit Socket.Bind needed).
+        if (string.IsNullOrWhiteSpace(outboundIp) || outboundIp is "0.0.0.0" or "::")
             return (_defaultClient, "os-default");
 
         var client = _clientsByIp.GetOrAdd(outboundIp, BuildClient);

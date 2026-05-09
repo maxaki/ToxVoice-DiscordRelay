@@ -32,20 +32,22 @@ Quick setup
 
      "Webhooks": {
        "voice": [
-         { "Url": "https://discord.com/api/webhooks/<id>/<token>",
-           "OutboundIp": "203.0.113.10" },
-         { "Url": "https://discord.com/api/webhooks/<id>/<token>",
-           "OutboundIp": "203.0.113.11" }
+         { "OutboundIp": "203.0.113.10",
+           "Url": "https://discord.com/api/webhooks/<id>/<token>" },
+         { "OutboundIp": "203.0.113.11",
+           "Url": "https://discord.com/api/webhooks/<id>/<token>" }
        ],
        "alerts": [
-         { "Url": "https://discord.com/api/webhooks/<id>/<token>" }
+         { "OutboundIp": "0.0.0.0",
+           "Url": "https://discord.com/api/webhooks/<id>/<token>" }
        ]
      }
 
    Each entry has:
+     OutboundIp  - local IPv4/IPv6 to send from. Use "0.0.0.0" (or omit
+                   the field) to let the OS pick the source IP via the
+                   default route.
      Url         - the Discord webhook URL (required)
-     OutboundIp  - local IPv4/IPv6 to send from (optional; omit to use
-                   the OS default route)
 
    You can name webhook routes anything (e.g. "voice", "moderation").
    The plugin must use the same names in its URL path.
@@ -90,7 +92,7 @@ BindAddress        Interface to bind on. Keep "127.0.0.1" for
                    be reachable from another machine (then add firewall
                    rules!).
 
-Webhooks           Map of name -> array of (Url, OutboundIp) targets.
+Webhooks           Map of name -> array of (OutboundIp, Url) targets.
                    The plugin uses the name in the relay URL path:
                      POST http://127.0.0.1:8787/relay/<name>
 

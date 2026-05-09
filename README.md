@@ -42,17 +42,17 @@ Grab the latest release for your platform from the
    ```json
    "Webhooks": {
      "voice": [
-       { "Url": "https://discord.com/api/webhooks/<id1>/<token1>", "OutboundIp": "203.0.113.10" },
-       { "Url": "https://discord.com/api/webhooks/<id2>/<token2>", "OutboundIp": "203.0.113.11" },
-       { "Url": "https://discord.com/api/webhooks/<id3>/<token3>", "OutboundIp": "203.0.113.12" }
+       { "OutboundIp": "203.0.113.10", "Url": "https://discord.com/api/webhooks/<id1>/<token1>" },
+       { "OutboundIp": "203.0.113.11", "Url": "https://discord.com/api/webhooks/<id2>/<token2>" },
+       { "OutboundIp": "203.0.113.12", "Url": "https://discord.com/api/webhooks/<id3>/<token3>" }
      ],
      "alerts": [
-       { "Url": "https://discord.com/api/webhooks/<id4>/<token4>" }
+       { "OutboundIp": "0.0.0.0", "Url": "https://discord.com/api/webhooks/<id4>/<token4>" }
      ]
    }
    ```
+   - `OutboundIp` — local IPv4/IPv6. Use `"0.0.0.0"` (or omit the field) to let the OS pick via the default route.
    - `Url` — required Discord webhook URL.
-   - `OutboundIp` — optional. Omit to use the OS default route.
 3. Start the relay:
    - Windows: double-click `ToxVoiceRelay.exe`
    - Linux: `./toxvoice-relay`
