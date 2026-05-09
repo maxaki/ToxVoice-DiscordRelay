@@ -9,5 +9,5 @@ public sealed class DiscordForwardResult
     public required string ContentType { get; init; }
     public required string OutboundIp { get; init; }
     public int Attempts { get; init; }
-    public bool AllIpsExhausted { get; init; }
+    public bool AllTargetsExhausted { get; init; }
 }

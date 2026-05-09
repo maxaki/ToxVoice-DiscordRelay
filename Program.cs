@@ -38,6 +38,7 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.AddSingleton<OutboundHttpClientPool>();
+builder.Services.AddSingleton<WebhookRouteRegistry>();
 builder.Services.AddSingleton<DiscordForwarder>();
 
 var relayOptions = builder.Configuration.GetSection(RelayOptions.SectionName).Get<RelayOptions>() ?? new RelayOptions();
@@ -64,20 +65,14 @@ app.MapPost("/webhook/{name}", async (
     string name,
     HttpContext httpContext,
     DiscordForwarder forwarder,
-    IOptions<RelayOptions> options,
+    WebhookRouteRegistry registry,
     ILogger<Program> logger,
     CancellationToken cancellationToken) =>
 {
-    if (!options.Value.Webhooks.TryGetValue(name, out var targetUrl) || string.IsNullOrWhiteSpace(targetUrl))
+    if (!registry.TryGet(name, out var route))
     {
         logger.LogWarning("Unknown webhook name requested: {Name}", name);
         return Results.NotFound(new { error = $"Unknown webhook: {name}" });
-    }
-
-    if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var targetUri))
-    {
-        logger.LogError("Invalid Discord webhook URL configured for {Name}: {Url}", name, targetUrl);
-        return Results.Problem("Misconfigured webhook target.", statusCode: 500);
     }
 
     using var bodyStream = new MemoryStream();
@@ -85,7 +80,7 @@ app.MapPost("/webhook/{name}", async (
     var body = bodyStream.ToArray();
     var contentType = httpContext.Request.ContentType ?? "application/octet-stream";
 
-    var result = await forwarder.ForwardAsync(targetUri, body, contentType, cancellationToken).ConfigureAwait(false);
+    var result = await forwarder.ForwardAsync(route, body, contentType, cancellationToken).ConfigureAwait(false);
 
     httpContext.Response.StatusCode = (int)result.StatusCode;
     httpContext.Response.ContentType = result.ContentType;
@@ -100,22 +95,21 @@ app.MapPost("/webhook/{name}", async (
 
 using (var scope = app.Services.CreateScope())
 {
-    var validatedOptions = scope.ServiceProvider.GetRequiredService<IOptions<RelayOptions>>().Value;
+    var registry = scope.ServiceProvider.GetRequiredService<WebhookRouteRegistry>();
     var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    if (validatedOptions.Webhooks.Count == 0)
+    if (registry.Names.Count == 0)
     {
         startupLogger.LogWarning(
             "No webhooks configured. Add entries under Relay:Webhooks in appsettings.json before forwarding.");
     }
     else
     {
-        startupLogger.LogInformation(
-            "Configured webhooks: [{Names}]", string.Join(", ", validatedOptions.Webhooks.Keys));
+        startupLogger.LogInformation("Configured webhooks: [{Names}]", string.Join(", ", registry.Names));
     }
 
     startupLogger.LogInformation(
-        "Listening on http://{Address}:{Port}", validatedOptions.BindAddress, validatedOptions.Port);
+        "Listening on http://{Address}:{Port}", relayOptions.BindAddress, relayOptions.Port);
 }
 
 try

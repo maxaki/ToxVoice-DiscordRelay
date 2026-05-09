@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Options;
@@ -7,74 +8,36 @@ namespace ToxVoice.DiscordRelay.Forwarding;
 
 public sealed class OutboundHttpClientPool : IDisposable
 {
-    private readonly IReadOnlyList<HttpClient> _clients;
-    private readonly IReadOnlyList<string> _labels;
-    private long _nextIndex = -1;
+    private readonly ConcurrentDictionary<string, HttpClient> _clientsByIp = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HttpClient _defaultClient;
+    private readonly TimeSpan _timeout;
+    private readonly ILogger<OutboundHttpClientPool> _logger;
 
     public OutboundHttpClientPool(IOptions<RelayOptions> options, ILogger<OutboundHttpClientPool> logger)
     {
-        var relayOptions = options.Value;
-        var timeout = TimeSpan.FromSeconds(Math.Max(1, relayOptions.RequestTimeoutSeconds));
+        _logger = logger;
+        _timeout = TimeSpan.FromSeconds(Math.Max(1, options.Value.RequestTimeoutSeconds));
+        _defaultClient = new HttpClient { Timeout = _timeout };
+    }
 
-        var clients = new List<HttpClient>();
-        var labels = new List<string>();
+    public (HttpClient Client, string Label) GetClient(string? outboundIp)
+    {
+        if (string.IsNullOrWhiteSpace(outboundIp))
+            return (_defaultClient, "os-default");
 
-        if (relayOptions.OutboundIps.Count == 0)
+        var client = _clientsByIp.GetOrAdd(outboundIp, BuildClient);
+        return (client, outboundIp);
+    }
+
+    private HttpClient BuildClient(string ip)
+    {
+        if (!IPAddress.TryParse(ip, out var address))
         {
-            clients.Add(new HttpClient { Timeout = timeout });
-            labels.Add("os-default");
-            logger.LogInformation("No OutboundIps configured — using OS default routing.");
-        }
-        else
-        {
-            foreach (var ip in relayOptions.OutboundIps)
-            {
-                if (!IPAddress.TryParse(ip, out var address))
-                {
-                    logger.LogWarning("Ignoring invalid OutboundIp: {Ip}", ip);
-                    continue;
-                }
-
-                clients.Add(BuildClient(address, timeout));
-                labels.Add(ip);
-            }
-
-            if (clients.Count == 0)
-            {
-                logger.LogWarning("All OutboundIps were invalid — falling back to OS default routing.");
-                clients.Add(new HttpClient { Timeout = timeout });
-                labels.Add("os-default");
-            }
+            _logger.LogWarning("Invalid OutboundIp '{Ip}', falling back to OS default for this target.", ip);
+            return _defaultClient;
         }
 
-        _clients = clients;
-        _labels = labels;
-        logger.LogInformation("Outbound HTTP clients configured: [{Ips}]", string.Join(", ", labels));
-    }
-
-    public int Count => _clients.Count;
-
-    public int NextStartIndex()
-    {
-        var raw = Interlocked.Increment(ref _nextIndex) & long.MaxValue;
-        return (int)(raw % _clients.Count);
-    }
-
-    public (HttpClient Client, string Label) GetAt(int index)
-    {
-        var i = ((index % _clients.Count) + _clients.Count) % _clients.Count;
-        return (_clients[i], _labels[i]);
-    }
-
-    public void Dispose()
-    {
-        foreach (var client in _clients)
-            client.Dispose();
-    }
-
-    private static HttpClient BuildClient(IPAddress localAddress, TimeSpan timeout)
-    {
-        var endpoint = new IPEndPoint(localAddress, 0);
+        var endpoint = new IPEndPoint(address, 0);
         var handler = new SocketsHttpHandler
         {
             ConnectCallback = async (context, cancellationToken) =>
@@ -93,7 +56,13 @@ public sealed class OutboundHttpClientPool : IDisposable
                 }
             }
         };
+        return new HttpClient(handler) { Timeout = _timeout };
+    }
 
-        return new HttpClient(handler) { Timeout = timeout };
+    public void Dispose()
+    {
+        _defaultClient.Dispose();
+        foreach (var client in _clientsByIp.Values)
+            client.Dispose();
     }
 }
